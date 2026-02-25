@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "homepage": "https://karthik70412.github.io/p018",
+  "homepage": "https://karthik70412.github.io/service_connect",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
