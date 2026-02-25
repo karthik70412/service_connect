@@ -96,10 +96,11 @@ export function AppProvider({ children }) {
 
     // Hire a professional (User action)
     const hireRequest = (professional, service) => {
+        const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
         const newRequest = {
             id: requests.length + 1,
-            userId: 99,
-            userName: 'You',
+            userId: currentUser.userId || 99,
+            userName: currentUser.fullName || 'You',
             professionalId: professional.id,
             professionalName: professional.name,
             service,
@@ -132,11 +133,25 @@ export function AppProvider({ children }) {
     const updateProfile = (data) => {
         setProfessionalProfile(prev => ({ ...prev, ...data }));
         setProfessionals(prev => prev.map(p => p.id === professionalProfile.id ? { ...p, ...data } : p));
+        // Update professional name in all existing requests
+        if (data.name && data.name !== professionalProfile.name) {
+            setRequests(prev => prev.map(r => 
+                r.professionalId === professionalProfile.id 
+                    ? { ...r, professionalName: data.name }
+                    : r
+            ));
+        }
     };
 
     // Add service to professional's profile
     const addService = (service) => {
         setProfessionalProfile(prev => ({ ...prev, services: [...(prev.services || []), service] }));
+        // Also update in the professionals array
+        setProfessionals(prev => prev.map(p => 
+            p.id === professionalProfile.id 
+                ? { ...p, services: [...(p.services || []), service] }
+                : p
+        ));
     };
 
     // Logout function - clear session from localStorage

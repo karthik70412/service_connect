@@ -19,6 +19,13 @@ export default function UserDashboard() {
     const [ratingSuccess, setRatingSuccess] = useState('');
     const [isHiring, setIsHiring] = useState(false);
     const [isRating, setIsRating] = useState(false);
+    const [currentUser, setCurrentUser] = useState(null);
+
+    // Get current logged-in user
+    useEffect(() => {
+        const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        setCurrentUser(user);
+    }, []);
 
     // Auto-apply filters from URL params
     useEffect(() => {
@@ -41,7 +48,7 @@ export default function UserDashboard() {
         }
     }, [location.pathname]);
 
-    const myRequests = requests.filter(r => r.userId === 99 || r.userName === 'You');
+    const myRequests = requests.filter(r => r.userId === currentUser?.userId || r.userName === currentUser?.fullName || r.userName === 'You');
 
     const filtered = professionals.filter(p => {
         const matchCat = selectedCategory === 'All' || p.category === selectedCategory;
