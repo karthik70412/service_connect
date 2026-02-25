@@ -45,12 +45,35 @@ export const initializeDemoUsers = () => {
     }
 
     // Initialize demo users in localStorage
-    const demoUsers = Object.values(DEMO_CREDENTIALS).map(cred => ({
-        name: cred.name,
-        email: cred.email,
-        password: cred.password,
-        role: cred.role
-    }));
+    const demoUsers = [
+        {
+            name: DEMO_CREDENTIALS.admin.name,
+            email: DEMO_CREDENTIALS.admin.email,
+            password: DEMO_CREDENTIALS.admin.password,
+            role: DEMO_CREDENTIALS.admin.role
+        },
+        {
+            name: DEMO_CREDENTIALS.professional.name,
+            email: DEMO_CREDENTIALS.professional.email,
+            password: DEMO_CREDENTIALS.professional.password,
+            role: DEMO_CREDENTIALS.professional.role,
+            professionalId: 1,
+            userId: 5001
+        },
+        {
+            name: DEMO_CREDENTIALS.user.name,
+            email: DEMO_CREDENTIALS.user.email,
+            password: DEMO_CREDENTIALS.user.password,
+            role: DEMO_CREDENTIALS.user.role,
+            userId: 5002
+        },
+        {
+            name: DEMO_CREDENTIALS.support.name,
+            email: DEMO_CREDENTIALS.support.email,
+            password: DEMO_CREDENTIALS.support.password,
+            role: DEMO_CREDENTIALS.support.role
+        }
+    ];
 
     localStorage.setItem('users', JSON.stringify(demoUsers));
 };

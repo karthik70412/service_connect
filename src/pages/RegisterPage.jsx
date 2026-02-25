@@ -62,7 +62,8 @@ export default function RegisterPage() {
                 name: formData.name,
                 email: formData.email,
                 password: formData.password,
-                role: 'user' // Default role for new users
+                role: 'user', // Default role for new users
+                userId: Math.floor(Math.random() * 10000) + 1000
             };
 
             users.push(newUser);
@@ -71,7 +72,9 @@ export default function RegisterPage() {
                 name: formData.name,
                 isLoggedIn: true,
                 email: formData.email,
-                role: 'user'
+                role: 'user',
+                userId: newUser.userId,
+                fullName: formData.name
             }));
 
             setSuccessMessage(`✅ Account created! Welcome ${formData.name}! Redirecting...`);

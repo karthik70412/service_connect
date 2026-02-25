@@ -45,7 +45,15 @@ export default function LoginPage() {
             email: credential.email,
             password: credential.password
         });
-        performLogin(credential.email, credential.password, credential.role);
+        // Create a user-like object for demo credentials
+        const demoUser = {
+            name: credential.name,
+            email: credential.email,
+            password: credential.password,
+            role: credential.role,
+            professionalId: credential.role === 'professional' ? 1 : undefined
+        };
+        performLogin(credential.email, credential.password, credential.role, demoUser);
     };
 
     const handleLogin = (e) => {
@@ -56,35 +64,36 @@ export default function LoginPage() {
         const user = users.find(u => u.email === formData.email && u.password === formData.password);
 
         if (user) {
-            performLogin(user.email, user.password, user.role || 'user');
+            performLogin(user.email, user.password, user.role || 'user', user);
         } else {
             setErrors({ form: 'Invalid email or password. Try demo credentials below.' });
         }
     };
 
-    const performLogin = (email, password, role) => {
+    const performLogin = (email, password, role, user = null) => {
         setIsLoading(true);
         setTimeout(() => {
             const currentUserData = {
-                name: formData.email.split('@')[0].toUpperCase(),
+                name: user?.name || formData.email.split('@')[0].toUpperCase(),
                 isLoggedIn: true,
                 email: email,
-                role: role
+                role: role,
+                fullName: user?.name
             };
 
             // If professional, assign a professionalId
             if (role === 'professional') {
-                // Map email to professional ID for consistency
-                let professionalId = 1;
-                if (email === 'pro@demo.com') {
-                    professionalId = 1;
+                // Use stored professionalId if exists
+                if (user && user.professionalId) {
+                    currentUserData.professionalId = user.professionalId;
+                } else if (email === 'pro@demo.com') {
+                    currentUserData.professionalId = 1;
                 } else {
                     // For custom professionals, assign based on email hash
                     const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
                     // Assuming we have professionals with IDs 1-10
-                    professionalId = (hash % 10) + 1;
+                    currentUserData.professionalId = (hash % 10) + 1;
                 }
-                currentUserData.professionalId = professionalId;
             }
             
             localStorage.setItem('currentUser', JSON.stringify(currentUserData));

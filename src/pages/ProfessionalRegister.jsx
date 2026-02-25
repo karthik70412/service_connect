@@ -120,7 +120,8 @@ export default function ProfessionalRegister() {
                 email: formData.email,
                 password: formData.password,
                 role: 'professional',
-                professionalId: newProfessional.id
+                professionalId: newProfessional.id,
+                userId: Math.floor(Math.random() * 10000) + 1000
             };
 
             existingUsers.push(newUser);
@@ -132,7 +133,9 @@ export default function ProfessionalRegister() {
                 isLoggedIn: true,
                 email: formData.email,
                 role: 'professional',
-                professionalId: newProfessional.id
+                professionalId: newProfessional.id,
+                userId: newUser.userId,
+                fullName: formData.name
             }));
 
             setRole('professional');
