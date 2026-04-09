@@ -18,6 +18,7 @@ const roleNavItems = {
         { label: 'Dashboard', icon: '🏠', path: '/user' },
         { label: 'Find Professionals', icon: '🔍', path: '/user/find' },
         { label: 'My Requests', icon: '📋', path: '/user/requests' },
+        { label: 'Support', icon: '🎫', path: '/user/support' },
     ],
     support: [
         { label: 'Dashboard', icon: '📊', path: '/support' },

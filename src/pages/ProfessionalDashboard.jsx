@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 
 export default function ProfessionalDashboard() {
     const location = useLocation();
-    const { professionals, professionalProfile, updateProfile, addService, requests, updateRequestStatus, setProfessionalProfile } = useApp();
+    const { professionals, professionalProfile, updateProfile, addService, requests, updateRequestStatus, fetchProfessionalRequests, setProfessionalProfile } = useApp();
     const [activeTab, setActiveTab] = useState('overview');
     const [editMode, setEditMode] = useState(false);
     const [form, setForm] = useState({ name: professionalProfile.name, bio: professionalProfile.bio, location: professionalProfile.location, price: professionalProfile.price });
@@ -18,14 +18,40 @@ export default function ProfessionalDashboard() {
     // Load correct professional profile on mount
     useEffect(() => {
         const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
-        if (currentUser.professionalId && currentUser.role === 'professional') {
-            const professional = professionals.find(p => p.id === currentUser.professionalId);
+        const professionalName = currentUser.name || currentUser.fullName || currentUser.professionalName;
+        if (currentUser.role === 'professional') {
+            let professional = null;
+            if (currentUser.professionalId) {
+                professional = professionals.find(p => p.id === currentUser.professionalId);
+            }
+            if (!professional && professionalName) {
+                professional = professionals.find(p => p.name === professionalName);
+            }
             if (professional) {
                 setProfessionalProfile(professional);
                 setForm({ name: professional.name, bio: professional.bio, location: professional.location, price: professional.price });
             }
         }
     }, [professionals, setProfessionalProfile]);
+
+    useEffect(() => {
+        const loadProfessionalRequests = async () => {
+            const professionalName = professionalProfile?.name || JSON.parse(localStorage.getItem('currentUser') || '{}').name;
+            console.log('🔵 ProfessionalDashboard: Loading requests for professional:', professionalName);
+            
+            if (professionalName) {
+                try {
+                    const result = await fetchProfessionalRequests(professionalName);
+                    console.log('🟢 ProfessionalDashboard: Requests loaded:', result);
+                } catch (error) {
+                    console.error('🔴 ProfessionalDashboard: Failed to load professional requests:', error);
+                }
+            } else {
+                console.warn('⚠️ ProfessionalDashboard: No professional name found');
+            }
+        };
+        loadProfessionalRequests();
+    }, [professionalProfile, fetchProfessionalRequests]);
 
     // Update active tab based on URL path
     useEffect(() => {
@@ -41,7 +67,25 @@ export default function ProfessionalDashboard() {
         }
     }, [location.pathname]);
 
-    const myRequests = requests.filter(r => r.professionalId === professionalProfile.id);
+    const myRequests = requests.filter(r => r.professionalName === professionalProfile.name);
+    
+    // Debug log for requests
+    if (myRequests.length > 0 || requests.length > 0) {
+        console.log('📊 ProfessionalDashboard: Request Filter Debug', {
+            totalRequests: requests.length,
+            professionalName: professionalProfile.name,
+            myRequestsCount: myRequests.length,
+            allRequests: requests.map(r => ({
+                id: r.id,
+                userName: r.userName,
+                professionalName: r.professionalName,
+                bookingDate: r.bookingDate,
+                bookingTime: r.bookingTime,
+                address: r.address,
+                status: r.status
+            }))
+        });
+    }
     const pendingCount = myRequests.filter(r => r.status === 'pending').length;
     const acceptedCount = myRequests.filter(r => r.status === 'accepted').length;
 
@@ -85,9 +129,7 @@ export default function ProfessionalDashboard() {
 
     const handleRequestAction = async (reqId, action) => {
         try {
-            // Simulate API call
-            await new Promise(res => setTimeout(res, 500));
-            updateRequestStatus(reqId, action);
+            await updateRequestStatus(reqId, action);
         } catch (error) {
             console.error('Error updating request:', error);
         }
@@ -306,35 +348,82 @@ export default function ProfessionalDashboard() {
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {myRequests.map(req => (
-                                <div key={req.id} className="card flex flex-col sm:flex-row sm:items-center gap-4">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-gray-900">{req.userName}</p>
-                                        <p className="text-sm text-gray-500 mt-0.5">{req.service}</p>
-                                        <p className="text-xs text-gray-400 mt-1">📍 {req.address} · 📅 {req.date}</p>
+                            {myRequests.map(req => {
+                                // Debug log to see request data structure
+                                console.log('📌 ProfessionalDashboard - Rendering request:', {
+                                    id: req.id,
+                                    userName: req.userName,
+                                    bookingDate: req.bookingDate,
+                                    bookingTime: req.bookingTime,
+                                    address: req.address,
+                                    note: req.note,
+                                    status: req.status,
+                                    rawReq: req
+                                });
+
+                                return (
+                                    <div key={req.id} className="card flex flex-col gap-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                                {/* User Name */}
+                                                <p className="font-semibold text-gray-900">
+                                                    {req.userName || 'Unknown User'}
+                                                </p>
+                                                
+                                                {/* Booking Date & Time */}
+                                                {(req.bookingDate || req.bookingTime) ? (
+                                                    <p className="text-sm text-gray-600 mt-1">
+                                                        {req.bookingDate ? `📅 ${req.bookingDate}` : '📅 No date'} {req.bookingTime ? `at ${req.bookingTime}` : ''}
+                                                    </p>
+                                                ) : null}
+                                                
+                                                {/* Address */}
+                                                {req.address ? (
+                                                    <p className="text-sm text-gray-600 mt-1">
+                                                        📍 {req.address}
+                                                    </p>
+                                                ) : null}
+                                                
+                                                {/* Note */}
+                                                {req.note ? (
+                                                    <p className="text-sm text-gray-600 mt-1">
+                                                        📝 {req.note}
+                                                    </p>
+                                                ) : null}
+                                                
+                                                {/* Status */}
+                                                <p className="text-xs text-gray-500 mt-2">
+                                                    Status: <span className="font-semibold">{(req.status || 'pending').toUpperCase()}</span>
+                                                </p>
+                                            </div>
+                                            
+                                            {/* Buttons */}
+                                            <div className="flex items-center gap-2 shrink-0">
+                                                {req.status === 'pending' ? (
+                                                    <>
+                                                        <button 
+                                                            onClick={() => handleRequestAction(req.id, 'accepted')} 
+                                                            className="btn-primary text-sm py-2 px-4 transition-all hover:shadow-md whitespace-nowrap"
+                                                        >
+                                                            Accept
+                                                        </button>
+                                                        <button 
+                                                            onClick={() => handleRequestAction(req.id, 'rejected')} 
+                                                            className="btn-danger text-sm py-2 px-4 transition-all hover:shadow-md whitespace-nowrap"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <span className={`badge ${req.status === 'accepted' ? 'badge-green' : 'badge-red'} text-sm px-3 py-1 whitespace-nowrap`}>
+                                                        {(req.status || 'pending').toUpperCase()}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        {req.status === 'pending' ? (
-                                            <>
-                                                <button 
-                                                    onClick={() => handleRequestAction(req.id, 'accepted')} 
-                                                    className="btn-primary text-sm py-1.5 px-4 transition-all hover:shadow-md"
-                                                >
-                                                    Accept
-                                                </button>
-                                                <button 
-                                                    onClick={() => handleRequestAction(req.id, 'rejected')} 
-                                                    className="btn-danger text-sm py-1.5 px-4 transition-all hover:shadow-md"
-                                                >
-                                                    Reject
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <span className={`badge ${req.status === 'accepted' ? 'badge-green' : 'badge-red'} text-sm px-3 py-1`}>{req.status}</span>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>

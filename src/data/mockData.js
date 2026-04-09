@@ -164,6 +164,11 @@ export const mockComplaints = [
     { id: 5, userName: 'Elan Murugan', subject: 'Rude behavior from professional', description: 'The carpenter was rude and argumentative during the service visit.', category: 'Conduct', status: 'resolved', date: '2025-02-16', priority: 'medium' },
 ];
 
+export const mockSupportRequests = [
+    { id: 101, userId: 1, userName: 'Aditya Sharma', subject: 'Cannot cancel my booking', description: 'I tried to cancel my booking from the app but the cancel button is not working. Please help.', category: 'Booking', priority: 'high', status: 'open', date: '2025-02-17' },
+    { id: 102, userId: 2, userName: 'Bhavna Patel', subject: 'Refund not received', description: 'I paid for the service but requested a refund 3 days ago and still have not received it.', category: 'Payment', priority: 'medium', status: 'open', date: '2025-02-18' },
+];
+
 export const reviews = [
     { id: 1, name: 'Sneha R.', city: 'Mumbai', rating: 5, text: 'Absolutely amazing service! The plumber arrived on time and fixed everything quickly. Will definitely use again!', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Sneha' },
     { id: 2, name: 'Kiran D.', city: 'Bangalore', rating: 5, text: 'The cleaning team was professional and thorough. My home sparkles. Worth every rupee!', avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Kiran' },

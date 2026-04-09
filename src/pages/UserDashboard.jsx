@@ -4,15 +4,16 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import ProfessionalCard from '../components/ProfessionalCard';
 import { useApp } from '../context/AppContext';
 import StarRating from '../components/StarRating';
+import ratingService from '../api/ratingService';
 
 export default function UserDashboard() {
-    const { professionals, hireRequest, requests, serviceCategories, updateRequestStatus, submitProfessionalRating } = useApp();
+    const { professionals, hireRequest, requests, serviceCategories, updateRequestStatus, submitProfessionalRating, supportRequests, submitSupportRequest, fetchUserRequests } = useApp();
     const location = useLocation();
     const [activeTab, setActiveTab] = useState('find');
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedCategory, setSelectedCategory] = useState('All');
-    const [hireModal, setHireModal] = useState(null); // { professional, services[] }
-    const [selectedService, setSelectedService] = useState('');
+    const [hireModal, setHireModal] = useState(null); // { professional object }
+    const [bookingForm, setBookingForm] = useState({ bookingDate: '', bookingTime: '', address: '', note: '' });
     const [successMsg, setSuccessMsg] = useState('');
     const [ratingPro, setRatingPro] = useState(null);
     const [myRating, setMyRating] = useState(0);
@@ -20,12 +21,30 @@ export default function UserDashboard() {
     const [isHiring, setIsHiring] = useState(false);
     const [isRating, setIsRating] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
+    // Support request form state
+    const [supportForm, setSupportForm] = useState({ subject: '', category: 'Booking', description: '', priority: 'medium' });
+    const [supportMsg, setSupportMsg] = useState('');
+    const [isSubmittingSupport, setIsSubmittingSupport] = useState(false);
 
     // Get current logged-in user
     useEffect(() => {
         const user = JSON.parse(localStorage.getItem('currentUser') || '{}');
         setCurrentUser(user);
     }, []);
+
+    useEffect(() => {
+        const loadRequests = async () => {
+            const currentUserName = currentUser?.name || currentUser?.fullName || currentUser?.userName || currentUser?.email;
+            if (currentUserName) {
+                try {
+                    await fetchUserRequests(currentUserName);
+                } catch (error) {
+                    console.error('Failed to load user requests:', error);
+                }
+            }
+        };
+        loadRequests();
+    }, [currentUser, fetchUserRequests]);
 
     // Auto-apply filters from URL params
     useEffect(() => {
@@ -43,12 +62,16 @@ export default function UserDashboard() {
             setActiveTab('requests');
         } else if (pathname.includes('/find')) {
             setActiveTab('find');
+        } else if (pathname.includes('/support')) {
+            setActiveTab('support');
         } else {
             setActiveTab('overview');
         }
     }, [location.pathname]);
 
-    const myRequests = requests.filter(r => r.userId === currentUser?.userId || r.userName === currentUser?.fullName || r.userName === 'You');
+    const currentUserName = currentUser?.name || currentUser?.fullName || currentUser?.userName || currentUser?.email || 'You';
+    const myRequests = requests.filter(r => r.userId === currentUser?.userId || r.userName === currentUserName || r.userName === 'You');
+    const mySupportTickets = supportRequests.filter(r => r.userId === currentUser?.userId || r.userName === currentUserName || r.userName === 'You');
 
     const filtered = professionals.filter(p => {
         const matchCat = selectedCategory === 'All' || p.category === selectedCategory;
@@ -58,24 +81,70 @@ export default function UserDashboard() {
 
     const handleHire = (professional) => {
         setHireModal(professional);
-        setSelectedService(professional.services[0] || '');
+        setBookingForm({ bookingDate: '', bookingTime: '', address: '', note: '' });
     };
 
     const confirmHire = async () => {
-        if (!selectedService) return;
+        // Get user name directly from localStorage to ensure it's current
+        const currentUserData = JSON.parse(localStorage.getItem('currentUser') || '{}');
+        const userName = currentUserData.name || currentUserData.fullName || currentUserData.userName || currentUserData.email;
+        const professionalName = hireModal?.name;
+
+        // Validate all required fields
+        const validationErrors = [];
+        if (!bookingForm.bookingDate) validationErrors.push('Booking Date');
+        if (!bookingForm.bookingTime) validationErrors.push('Booking Time');
+        if (!bookingForm.address) validationErrors.push('Address');
+        if (!userName) validationErrors.push('User Name (please log in)');
+        if (!professionalName) validationErrors.push('Professional Name');
+        
+        if (validationErrors.length > 0) {
+            const errorMsg = `❌ Missing required fields: ${validationErrors.join(', ')}`;
+            setSuccessMsg(errorMsg);
+            console.warn('Booking validation failed:', { validationErrors, userName, professionalName, bookingForm });
+            setTimeout(() => setSuccessMsg(''), 4000);
+            return;
+        }
+
+        // Format time to HH:MM format (remove seconds if present)
+        const formattedTime = bookingForm.bookingTime.includes(':') 
+            ? bookingForm.bookingTime.split(':').slice(0, 2).join(':') 
+            : bookingForm.bookingTime;
+
         setIsHiring(true);
         try {
-            // Simulate API call
-            await new Promise(res => setTimeout(res, 800));
-            hireRequest(hireModal, selectedService);
+            // Log the exact data being sent
+            console.log('📤 Sending booking request with data:', {
+                userName,
+                professionalName,
+                bookingDate: bookingForm.bookingDate,
+                bookingTime: formattedTime,
+                address: bookingForm.address,
+                note: bookingForm.note || '(no note)'
+            });
+
+            await hireRequest(userName, professionalName, bookingForm.bookingDate, formattedTime, bookingForm.address, bookingForm.note);
+            
             setHireModal(null);
-            setSuccessMsg(`✅ Hired ${hireModal.name} for "${selectedService}"! Request sent.`);
-            setTimeout(() => setSuccessMsg(''), 4000);
+            setBookingForm({ bookingDate: '', bookingTime: '', address: '', note: '' });
+            setSuccessMsg(`✅ Booking request sent to ${professionalName}! Check your requests for updates.`);
+            console.log('✅ Booking successful!');
+            setTimeout(() => setSuccessMsg(''), 5000);
             setActiveTab('requests');
         } catch (error) {
-            console.error('Error hiring professional:', error);
-            setSuccessMsg('❌ Failed to send hire request. Please try again.');
-            setTimeout(() => setSuccessMsg(''), 4000);
+            console.error('❌ Booking Error Details:');
+            console.error('Error object:', error);
+            console.error('Response status:', error.response?.status);
+            console.error('Response data:', error.response?.data);
+            console.error('Error message:', error.message);
+            
+            const backendError = error.response?.data?.message;
+            const statusCode = error.response?.status;
+            const errorMessage = backendError || error.message || 'Failed to send booking request. Please try again.';
+            
+            setSuccessMsg(`❌ Booking failed: ${errorMessage}`);
+            console.error('User-facing error:', `❌ Booking failed: ${errorMessage}`);
+            setTimeout(() => setSuccessMsg(''), 5000);
         } finally {
             setIsHiring(false);
         }
@@ -85,18 +154,20 @@ export default function UserDashboard() {
         if (myRating === 0) return;
         setIsRating(true);
         try {
-            // Simulate API call
-            await new Promise(res => setTimeout(res, 600));
-            
-            // Update professional stats
-            if (ratingPro && myRating > 0) {
-                submitProfessionalRating(ratingPro.professionalId, myRating);
-                
-                // Mark request as completed
-                if (ratingPro.id) {
-                    updateRequestStatus(ratingPro.id, 'completed');
-                }
+            const userName = currentUser?.name || currentUser?.fullName || currentUser?.userName || currentUser?.email;
+            if (!userName || !ratingPro?.professionalName) {
+                setRatingSuccess('❌ Unable to submit rating. Missing user or professional information.');
+                setTimeout(() => setRatingSuccess(''), 3000);
+                setIsRating(false);
+                return;
             }
+            
+            // Call backend API
+            await ratingService.submitRating({
+                userName,
+                professionalName: ratingPro.professionalName,
+                rating: myRating,
+            });
             
             setRatingSuccess(`⭐ Rating submitted for ${ratingPro.professionalName}! Thank you 🎉`);
             setRatingPro(null);
@@ -111,17 +182,35 @@ export default function UserDashboard() {
         }
     };
 
+    const handleSupportSubmit = async (e) => {
+        e.preventDefault();
+        if (!supportForm.subject.trim() || !supportForm.description.trim()) return;
+        setIsSubmittingSupport(true);
+        try {
+            await new Promise(res => setTimeout(res, 700));
+            await submitSupportRequest(supportForm);
+            setSupportForm({ subject: '', category: 'Booking', description: '', priority: 'medium' });
+            setSupportMsg('✅ Your support request has been submitted! Our team will respond shortly.');
+            setTimeout(() => setSupportMsg(''), 5000);
+        } catch (err) {
+            setSupportMsg('❌ Failed to submit request. Please try again.');
+            setTimeout(() => setSupportMsg(''), 4000);
+        } finally {
+            setIsSubmittingSupport(false);
+        }
+    };
+
     return (
         <DashboardLayout title="User Dashboard">
             {/* Tabs */}
             <div className="flex gap-2 mb-6 flex-wrap">
-                {['find', 'requests'].map(tab => (
+                {['find', 'requests', 'support'].map(tab => (
                     <button
                         key={tab}
                         onClick={() => setActiveTab(tab)}
                         className={`px-4 py-2 rounded-xl text-sm font-medium capitalize transition-all ${activeTab === tab ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
                     >
-                        {tab === 'find' ? '🔍 Find Professionals' : `📋 My Requests (${myRequests.length})`}
+                        {tab === 'find' ? '🔍 Find Professionals' : tab === 'requests' ? `📋 My Requests (${myRequests.length})` : `🎫 Support (${mySupportTickets.length})`}
                     </button>
                 ))}
             </div>
@@ -217,67 +306,270 @@ export default function UserDashboard() {
                         </div>
                     ) : (
                         <div className="space-y-4">
-                            {myRequests.map(req => (
-                                <div key={req.id} className="card flex flex-col sm:flex-row sm:items-center gap-4">
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-semibold text-gray-900">{req.professionalName}</p>
-                                        <p className="text-sm text-gray-500 mt-0.5">{req.service}</p>
-                                        <p className="text-xs text-gray-400 mt-1">📅 {req.date} · 📍 {req.address}</p>
+                            {myRequests.map(req => {
+                                console.log('📌 UserDashboard - Request Card Data:', {
+                                    id: req.id,
+                                    professionalName: req.professionalName,
+                                    bookingDate: req.bookingDate,
+                                    bookingTime: req.bookingTime,
+                                    address: req.address,
+                                    note: req.note,
+                                    status: req.status
+                                });
+
+                                return (
+                                    <div key={req.id} className="card flex flex-col gap-4">
+                                        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                                {/* Professional Name */}
+                                                <p className="font-semibold text-gray-900">
+                                                    {req.professionalName || 'Unknown Professional'}
+                                                </p>
+                                                
+                                                {/* Booking Date & Time */}
+                                                {req.bookingDate || req.bookingTime ? (
+                                                    <p className="text-sm text-gray-600 mt-1">
+                                                        📅 {req.bookingDate || 'Not provided'} 
+                                                        {req.bookingTime ? ` ⏰ ${req.bookingTime}` : ''}
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-sm text-gray-400 mt-1">
+                                                        📅 Not provided ⏰ Not provided
+                                                    </p>
+                                                )}
+                                                
+                                                {/* Address */}
+                                                {req.address ? (
+                                                    <p className="text-sm text-gray-600 mt-1">
+                                                        📍 {req.address}
+                                                    </p>
+                                                ) : (
+                                                    <p className="text-sm text-gray-400 mt-1">
+                                                        📍 Not provided
+                                                    </p>
+                                                )}
+                                                
+                                                {/* Note */}
+                                                {req.note ? (
+                                                    <p className="text-sm text-gray-600 mt-1">
+                                                        📝 {req.note}
+                                                    </p>
+                                                ) : null}
+                                            </div>
+                                            
+                                            <div className="flex items-center gap-3 min-w-fit">
+                                                <span className={`badge text-sm px-3 py-1 whitespace-nowrap ${req.status === 'accepted' ? 'badge-green' : req.status === 'pending' ? 'badge-yellow' : 'badge-red'}`}>
+                                                    {(req.status || 'pending').toUpperCase()}
+                                                </span>
+                                                {req.status === 'accepted' && (
+                                                    <button
+                                                        onClick={() => { setRatingPro(req); setMyRating(0); }}
+                                                        className="text-sm text-blue-600 hover:text-blue-800 font-medium underline whitespace-nowrap"
+                                                    >
+                                                        Rate
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-3">
-                                        <span className={`badge text-sm px-3 py-1 ${req.status === 'accepted' ? 'badge-green' : req.status === 'pending' ? 'badge-yellow' : 'badge-red'}`}>
-                                            {req.status}
-                                        </span>
-                                        {req.status === 'accepted' && (
-                                            <button
-                                                onClick={() => { setRatingPro(req); setMyRating(0); }}
-                                                className="text-sm text-blue-600 hover:text-blue-800 font-medium underline"
-                                            >
-                                                Rate
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
             )}
 
-            {/* Hire Modal */}
+            {/* Support Tab */}
+            {activeTab === 'support' && (
+                <div className="animate-fade-in">
+                    <div className="grid lg:grid-cols-2 gap-6">
+                        {/* Submit Form */}
+                        <div>
+                            <div className="card">
+                                <div className="flex items-center gap-3 mb-5">
+                                    <div className="w-10 h-10 rounded-xl bg-blue-100 flex items-center justify-center text-blue-600 text-xl">🎫</div>
+                                    <div>
+                                        <h3 className="font-bold text-gray-900">Submit a Support Request</h3>
+                                        <p className="text-xs text-gray-500 mt-0.5">Our support team typically responds within 24 hours</p>
+                                    </div>
+                                </div>
+                                {supportMsg && (
+                                    <div className={`mb-5 p-4 rounded-xl text-sm font-medium ${supportMsg.includes('❌') ? 'bg-red-50 border border-red-200 text-red-700' : 'bg-green-50 border border-green-200 text-green-700'}`}>
+                                        {supportMsg}
+                                    </div>
+                                )}
+                                <form onSubmit={handleSupportSubmit} className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Subject <span className="text-red-400">*</span></label>
+                                        <input
+                                            type="text"
+                                            value={supportForm.subject}
+                                            onChange={e => setSupportForm(p => ({ ...p, subject: e.target.value }))}
+                                            placeholder="Briefly describe your issue"
+                                            className="input"
+                                            required
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Category</label>
+                                            <select
+                                                value={supportForm.category}
+                                                onChange={e => setSupportForm(p => ({ ...p, category: e.target.value }))}
+                                                className="input"
+                                            >
+                                                {['Booking', 'Payment', 'Quality', 'Professional', 'Refund', 'App Issue', 'Other'].map(c => (
+                                                    <option key={c} value={c}>{c}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Priority</label>
+                                            <select
+                                                value={supportForm.priority}
+                                                onChange={e => setSupportForm(p => ({ ...p, priority: e.target.value }))}
+                                                className="input"
+                                            >
+                                                <option value="low">🟢 Low</option>
+                                                <option value="medium">🟡 Medium</option>
+                                                <option value="high">🔴 High</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium text-gray-700 mb-1.5">Description <span className="text-red-400">*</span></label>
+                                        <textarea
+                                            value={supportForm.description}
+                                            onChange={e => setSupportForm(p => ({ ...p, description: e.target.value }))}
+                                            placeholder="Please provide full details about your issue..."
+                                            rows={4}
+                                            className="input resize-none"
+                                            required
+                                        />
+                                    </div>
+                                    <button
+                                        type="submit"
+                                        disabled={isSubmittingSupport || !supportForm.subject.trim() || !supportForm.description.trim()}
+                                        className="btn-primary w-full disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                                    >
+                                        {isSubmittingSupport ? (
+                                            <><span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>Submitting...</>
+                                        ) : '📨 Submit Request'}
+                                    </button>
+                                </form>
+                            </div>
+                        </div>
+
+                        {/* My Support Tickets */}
+                        <div>
+                            <h3 className="font-semibold text-gray-900 mb-4">My Support Tickets ({mySupportTickets.length})</h3>
+                            {mySupportTickets.length === 0 ? (
+                                <div className="card text-center py-10">
+                                    <p className="text-3xl mb-3">🎫</p>
+                                    <p className="text-gray-500 text-sm">No support requests yet.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {mySupportTickets.map(ticket => (
+                                        <div key={ticket.id} className="card animate-fade-in">
+                                            <div className="flex items-start justify-between gap-3">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                                                        <p className="font-semibold text-gray-900 text-sm">{ticket.subject}</p>
+                                                    </div>
+                                                    <p className="text-xs text-gray-500 mb-2 leading-relaxed">{ticket.description}</p>
+                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                        <span className="badge badge-blue text-xs">{ticket.category}</span>
+                                                        <span className={`badge text-xs ${ ticket.priority === 'high' ? 'badge-red' : ticket.priority === 'medium' ? 'badge-yellow' : 'badge-green'}`}>{ticket.priority}</span>
+                                                        <span className="text-xs text-gray-400">📅 {ticket.date}</span>
+                                                    </div>
+                                                </div>
+                                                <span className={`badge text-xs px-2 py-1 flex-shrink-0 ${ticket.status === 'open' ? 'badge-red' : 'badge-green'}`}>
+                                                    {ticket.status === 'open' ? '🔴 Open' : '✅ Resolved'}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Hire Modal - Booking Form */}
             {hireModal && (
                 <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-7 animate-slide-up">
-                        <div className="flex items-center gap-4 mb-5">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md p-7 animate-slide-up max-h-[90vh] overflow-y-auto">
+                        <div className="flex items-center gap-4 mb-6">
                             <img src={hireModal.avatar} alt={hireModal.name} className="w-14 h-14 rounded-2xl bg-gray-100" />
-                            <div>
-                                <h3 className="font-bold text-gray-900 text-lg">{hireModal.name}</h3>
+                            <div className="flex-1 min-w-0">
+                                <h3 className="font-bold text-gray-900 text-lg truncate">{hireModal.name}</h3>
                                 <p className="text-green-600 text-sm">{hireModal.category} · {hireModal.price}</p>
                             </div>
                         </div>
-                        <div className="mb-5">
-                            <label className="block text-sm font-medium text-gray-700 mb-2">Select Service</label>
-                            <select
-                                value={selectedService}
-                                onChange={e => setSelectedService(e.target.value)}
-                                disabled={isHiring}
-                                className="input disabled:opacity-50"
-                            >
-                                {hireModal.services.map((s, i) => <option key={i} value={s}>{s}</option>)}
-                            </select>
+
+                        <div className="space-y-4 mb-5">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Booking Date *</label>
+                                <input
+                                    type="date"
+                                    value={bookingForm.bookingDate}
+                                    onChange={(e) => setBookingForm({ ...bookingForm, bookingDate: e.target.value })}
+                                    disabled={isHiring}
+                                    className="input disabled:opacity-50"
+                                    min={new Date().toISOString().split('T')[0]}
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Booking Time *</label>
+                                <input
+                                    type="time"
+                                    value={bookingForm.bookingTime}
+                                    onChange={(e) => setBookingForm({ ...bookingForm, bookingTime: e.target.value })}
+                                    disabled={isHiring}
+                                    className="input disabled:opacity-50"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Address *</label>
+                                <input
+                                    type="text"
+                                    placeholder="e.g., Hyderabad, Kukatpally"
+                                    value={bookingForm.address}
+                                    onChange={(e) => setBookingForm({ ...bookingForm, address: e.target.value })}
+                                    disabled={isHiring}
+                                    className="input disabled:opacity-50"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1.5">Notes / Instructions</label>
+                                <textarea
+                                    placeholder="e.g., Please bring tools, let me know before arrival..."
+                                    value={bookingForm.note}
+                                    onChange={(e) => setBookingForm({ ...bookingForm, note: e.target.value })}
+                                    disabled={isHiring}
+                                    className="input resize-none disabled:opacity-50"
+                                    rows={3}
+                                />
+                            </div>
                         </div>
+
                         <div className="flex gap-3">
                             <button 
                                 onClick={confirmHire} 
-                                disabled={!selectedService || isHiring}
+                                disabled={!bookingForm.bookingDate || !bookingForm.bookingTime || !bookingForm.address || isHiring}
                                 className="btn-primary flex-1 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                             >
                                 {isHiring ? (
                                     <>
                                         <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                                        Confirming...
+                                        Booking...
                                     </>
-                                ) : 'Confirm Hire'}
+                                ) : 'Confirm Booking'}
                             </button>
                             <button 
                                 onClick={() => setHireModal(null)} 

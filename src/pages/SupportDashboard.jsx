@@ -3,13 +3,14 @@ import DashboardLayout from '../layouts/DashboardLayout';
 import { useApp } from '../context/AppContext';
 
 export default function SupportDashboard() {
-    const { complaints, resolveComplaint } = useApp();
+    const { complaints, resolveComplaint, supportRequests, resolveSupportRequest } = useApp();
+    const [activeSection, setActiveSection] = useState('complaints'); // 'complaints' | 'requests'
     const [filter, setFilter] = useState('all'); // 'all' | 'open' | 'resolved'
     const [searchQuery, setSearchQuery] = useState('');
     const [resolvingId, setResolvingId] = useState(null);
     const [resolveMessage, setResolveMessage] = useState('');
 
-    const filtered = complaints.filter(c => {
+    const filtered = (activeSection === 'complaints' ? complaints : supportRequests).filter(c => {
         const matchFilter = filter === 'all' || c.status === filter;
         const matchSearch = !searchQuery ||
             c.userName.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -20,6 +21,7 @@ export default function SupportDashboard() {
 
     const openCount = complaints.filter(c => c.status === 'open').length;
     const resolvedCount = complaints.filter(c => c.status === 'resolved').length;
+    const openRequestsCount = supportRequests.filter(r => r.status === 'open').length;
 
     const priorityColor = { high: 'badge-red', medium: 'badge-yellow', low: 'badge-green' };
 
@@ -40,6 +42,21 @@ export default function SupportDashboard() {
         }
     };
 
+    const handleResolveSupportRequest = async (ticketId) => {
+        setResolvingId(ticketId);
+        try {
+            await new Promise(res => setTimeout(res, 600));
+            resolveSupportRequest(ticketId);
+            setResolveMessage('✅ User request marked as resolved!');
+            setTimeout(() => setResolveMessage(''), 3000);
+        } catch (error) {
+            setResolveMessage('❌ Failed to resolve request. Please try again.');
+            setTimeout(() => setResolveMessage(''), 3000);
+        } finally {
+            setResolvingId(null);
+        }
+    };
+
     return (
         <DashboardLayout title="Customer Support">
             {resolveMessage && (
@@ -48,18 +65,35 @@ export default function SupportDashboard() {
                 </div>
             )}
 
+            {/* Section Tabs */}
+            <div className="flex gap-2 mb-6 flex-wrap">
+                <button
+                    onClick={() => { setActiveSection('complaints'); setFilter('all'); }}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeSection === 'complaints' ? 'bg-orange-500 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+                >
+                    💬 Complaints ({complaints.length})
+                </button>
+                <button
+                    onClick={() => { setActiveSection('requests'); setFilter('all'); }}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${activeSection === 'requests' ? 'bg-blue-600 text-white shadow-md' : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'}`}
+                >
+                    🎫 User Requests ({supportRequests.length})
+                    {openRequestsCount > 0 && <span className="ml-2 inline-flex items-center justify-center w-5 h-5 rounded-full bg-red-500 text-white text-xs font-bold">{openRequestsCount}</span>}
+                </button>
+            </div>
+
             {/* Stats Row */}
             <div className="grid sm:grid-cols-3 gap-5 mb-7">
                 <div className="card text-center">
-                    <p className="text-3xl font-bold text-gray-900">{complaints.length}</p>
-                    <p className="text-sm text-gray-500 mt-1">Total Tickets</p>
+                    <p className="text-3xl font-bold text-gray-900">{activeSection === 'complaints' ? complaints.length : supportRequests.length}</p>
+                    <p className="text-sm text-gray-500 mt-1">{activeSection === 'complaints' ? 'Total Complaints' : 'Total Requests'}</p>
                 </div>
                 <div className="card text-center">
-                    <p className="text-3xl font-bold text-red-500">{openCount}</p>
-                    <p className="text-sm text-gray-500 mt-1">Open Tickets</p>
+                    <p className="text-3xl font-bold text-red-500">{activeSection === 'complaints' ? openCount : openRequestsCount}</p>
+                    <p className="text-sm text-gray-500 mt-1">Open</p>
                 </div>
                 <div className="card text-center">
-                    <p className="text-3xl font-bold text-green-600">{resolvedCount}</p>
+                    <p className="text-3xl font-bold text-green-600">{activeSection === 'complaints' ? resolvedCount : supportRequests.filter(r => r.status === 'resolved').length}</p>
                     <p className="text-sm text-gray-500 mt-1">Resolved</p>
                 </div>
             </div>
@@ -134,7 +168,7 @@ export default function SupportDashboard() {
                                         </span>
                                         {ticket.status === 'open' && (
                                             <button
-                                                onClick={() => handleResolveComplaint(ticket.id)}
+                                                onClick={() => activeSection === 'complaints' ? handleResolveComplaint(ticket.id) : handleResolveSupportRequest(ticket.id)}
                                                 disabled={resolvingId === ticket.id}
                                                 className="btn-primary text-sm py-1.5 px-4 whitespace-nowrap disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                             >

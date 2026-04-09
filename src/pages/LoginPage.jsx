@@ -2,6 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import API from '../api/axiosConfig';
 import { DEMO_CREDENTIALS, initializeDemoUsers } from '../config/demoCredentials';
 
 const validateEmail = (email) => {
@@ -56,67 +57,116 @@ export default function LoginPage() {
         performLogin(credential.email, credential.password, credential.role, demoUser);
     };
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
         if (!runValidation()) return;
         
-        const users = JSON.parse(localStorage.getItem('users') || '[]');
-        const user = users.find(u => u.email === formData.email && u.password === formData.password);
+        setIsLoading(true);
+        setErrors({});
 
-        if (user) {
-            performLogin(user.email, user.password, user.role || 'user', user);
-        } else {
-            setErrors({ form: 'Invalid email or password. Try demo credentials below.' });
+        // Try to identify role based on email or try all roles if unknown
+        // For this app, let's try to match with demo roles first to know which API to call, 
+        // or just try common patterns.
+        
+        const loginData = {
+            email: formData.email,
+            password: formData.password
+        };
+
+        try {
+            let response;
+            let role = 'user'; // Default
+            let payload = {};
+
+            // Determine which API to call based on the user's intent or stored role
+            // In a real app, you might have one login endpoint, but here we have 4.
+            // We'll try to find if it's a demo user first to determine the role.
+            const demoUser = Object.values(DEMO_CREDENTIALS).find(d => d.email === formData.email);
+            const userRole = demoUser ? demoUser.role : (searchParams.get('role') || 'user');
+
+            if (userRole === 'admin') {
+                response = await API.post('/adminapi/login', { adminEmail: loginData.email, adminPassword: loginData.password });
+                role = 'admin';
+            } else if (userRole === 'professional') {
+                response = await API.post('/professionalapi/login', { professionalEmail: loginData.email, professionalPassword: loginData.password });
+                role = 'professional';
+            } else if (userRole === 'support') {
+                response = await API.post('/supportapi/login', { supportEmail: loginData.email, supportPassword: loginData.password });
+                role = 'support';
+            } else {
+                response = await API.post('/userapi/login', { userEmail: loginData.email, userPassword: loginData.password });
+                role = 'user';
+            }
+
+            if (response.data.message === "Login Successful") {
+                performLogin(formData.email, formData.password, role, response.data);
+            } else {
+                setErrors({ form: response.data.message || 'Invalid credentials' });
+                setIsLoading(false);
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            
+            // Fallback to local storage / demo logic if backend fails or user not found in backend
+            const users = JSON.parse(localStorage.getItem('users') || '[]');
+            const localUser = users.find(u => u.email === formData.email && u.password === formData.password);
+            const demoUser = Object.values(DEMO_CREDENTIALS).find(d => d.email === formData.email && d.password === formData.password);
+
+            if (localUser || demoUser) {
+                const user = localUser || demoUser;
+                performLogin(user.email, user.password, user.role || 'user', user);
+            } else {
+                const errorMsg = error.response?.data?.message || 'Invalid email or password. Ensure backend is running.';
+                setErrors({ form: errorMsg });
+                setIsLoading(false);
+            }
         }
     };
 
     const performLogin = (email, password, role, user = null) => {
         setIsLoading(true);
-        setTimeout(() => {
-            const currentUserData = {
-                name: user?.name || formData.email.split('@')[0].toUpperCase(),
-                isLoggedIn: true,
-                email: email,
-                role: role,
-                fullName: user?.name
-            };
+        const currentUserData = {
+            name: user?.userName || user?.professionalName || user?.adminName || user?.supportName || user?.name || email.split('@')[0].toUpperCase(),
+            isLoggedIn: true,
+            email: email,
+            role: role,
+            fullName: user?.userName || user?.professionalName || user?.name
+        };
 
-            // If professional, assign a professionalId
-            if (role === 'professional') {
-                // Use stored professionalId if exists
-                if (user && user.professionalId) {
-                    currentUserData.professionalId = user.professionalId;
-                } else if (email === 'pro@demo.com') {
-                    currentUserData.professionalId = 1;
-                } else {
-                    // For custom professionals, assign based on email hash
-                    const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
-                    // Assuming we have professionals with IDs 1-10
-                    currentUserData.professionalId = (hash % 10) + 1;
-                }
+        // Assign IDs from backend payload if available
+        if (user?.userId) currentUserData.userId = user.userId;
+        if (user?.professionalId) currentUserData.professionalId = user.professionalId;
+        if (user?.adminId) currentUserData.adminId = user.adminId;
+        if (user?.supportId) currentUserData.supportId = user.supportId;
+
+        // Fallback for professionalId if not provided by backend but role is professional
+        if (role === 'professional' && !currentUserData.professionalId) {
+            if (email === 'pro@demo.com') {
+                currentUserData.professionalId = 1;
+            } else {
+                const hash = email.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                currentUserData.professionalId = (hash % 10) + 1;
             }
-            
-            localStorage.setItem('currentUser', JSON.stringify(currentUserData));
-            setRole(role);
-            setSuccessMessage(`✅ Welcome! Redirecting...`);
-            
-            setTimeout(() => {
-                // Check if there's a redirect URL in query params
-                const redirectUrl = searchParams.get('redirect');
-                
-                if (redirectUrl) {
-                    navigate(redirectUrl);
-                } else {
-                    const routes = {
-                        admin: '/admin',
-                        professional: '/professional',
-                        user: '/user',
-                        support: '/support'
-                    };
-                    navigate(routes[role] || '/user');
-                }
-            }, 1000);
-        }, 800);
+        }
+        
+        localStorage.setItem('currentUser', JSON.stringify(currentUserData));
+        setRole(role);
+        setSuccessMessage(`✅ Welcome! Redirecting...`);
+        
+        setTimeout(() => {
+            const redirectUrl = searchParams.get('redirect');
+            if (redirectUrl) {
+                navigate(redirectUrl);
+            } else {
+                const routes = {
+                    admin: '/admin',
+                    professional: '/professional',
+                    user: '/user',
+                    support: '/support'
+                };
+                navigate(routes[role] || '/user');
+            }
+        }, 1000);
     };
 
     return (

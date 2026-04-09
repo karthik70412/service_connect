@@ -32,9 +32,14 @@ export default function ProfessionalDetail() {
         }
         setIsHiring(true);
         try {
-            // Simulate API call
-            await new Promise(res => setTimeout(res, 800));
-            hireRequest(pro, selectedService || pro.services[0] || pro.category);
+            const currentUser = JSON.parse(localStorage.getItem('currentUser') || '{}');
+            const userName = currentUser.name || currentUser.fullName || currentUser.userName || currentUser.email;
+            if (!userName) {
+                console.error('No logged in user name available for hire request.');
+                setIsHiring(false);
+                return;
+            }
+            await hireRequest(userName, pro.name, selectedService || pro.services[0] || pro.category);
             setHired(true);
         } catch (error) {
             console.error('Error hiring professional:', error);

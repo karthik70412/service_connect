@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import API from '../api/axiosConfig';
 import { DEMO_CREDENTIALS } from '../config/demoCredentials';
 
 const validateEmail = (email) => {
@@ -13,7 +14,7 @@ export default function RegisterPage() {
     const [searchParams] = useSearchParams();
     const { setRole } = useApp();
     
-    const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '' });
+    const [formData, setFormData] = useState({ name: '', email: '', password: '', confirmPassword: '', contact: '', address: '' });
     const [isLoading, setIsLoading] = useState(false);
     const [errors, setErrors] = useState({});
     const [successMessage, setSuccessMessage] = useState('');
@@ -38,59 +39,82 @@ export default function RegisterPage() {
         if (formData.password !== formData.confirmPassword) {
             currentErrors.confirmPassword = 'Passwords do not match.';
         }
+        if (!formData.contact || formData.contact.length < 10) {
+            currentErrors.contact = 'Valid Contact Number is required.';
+        }
+        if (!formData.address) {
+            currentErrors.address = 'Address is required.';
+        }
 
         setErrors(currentErrors);
         return Object.keys(currentErrors).length === 0;
     };
 
-    const handleRegister = (e) => {
+    const handleRegister = async (e) => {
         e.preventDefault();
         if (!runValidation()) return;
 
         setIsLoading(true);
         
-        setTimeout(() => {
-            const users = JSON.parse(localStorage.getItem('users') || '[]');
-            
-            if (users.some(u => u.email === formData.email)) {
-                setIsLoading(false);
-                setErrors({ form: 'An account with this email already exists. Please sign in.' });
-                return;
-            }
-
-            const newUser = {
-                name: formData.name,
-                email: formData.email,
-                password: formData.password,
-                role: 'user', // Default role for new users
-                userId: Math.floor(Math.random() * 10000) + 1000
+        try {
+            // Prepare user data for backend
+            const userData = {
+                userName: formData.name,
+                userEmail: formData.email,
+                userPassword: formData.password,
+                userContact: formData.contact,
+                userAddress: formData.address
             };
 
-            users.push(newUser);
-            localStorage.setItem('users', JSON.stringify(users));
-            localStorage.setItem('currentUser', JSON.stringify({
-                name: formData.name,
-                isLoggedIn: true,
-                email: formData.email,
-                role: 'user',
-                userId: newUser.userId,
-                fullName: formData.name
-            }));
+            // Call real backend API
+            const response = await API.post('/userapi/registration', userData);
+            
+            if (response.data.message.includes("Successful")) {
+                const backendUser = response.data;
+                const newUserId = backendUser.userId || (Math.floor(Math.random() * 10000) + 1000);
 
-            setSuccessMessage(`✅ Account created! Welcome ${formData.name}! Redirecting...`);
-            setRole('user');
+                // Still keep local storage logic for compatibility
+                const users = JSON.parse(localStorage.getItem('users') || '[]');
+                const newUser = {
+                    name: formData.name,
+                    email: formData.email,
+                    password: formData.password,
+                    role: 'user',
+                    userId: newUserId
+                };
+                users.push(newUser);
+                localStorage.setItem('users', JSON.stringify(users));
 
-            setTimeout(() => {
-                // Check if there's a redirect URL in query params
-                const redirectUrl = searchParams.get('redirect');
-                
-                if (redirectUrl) {
-                    navigate(redirectUrl);
-                } else {
-                    navigate('/user');
-                }
-            }, 1000);
-        }, 1000);
+                localStorage.setItem('currentUser', JSON.stringify({
+                    name: formData.name,
+                    isLoggedIn: true,
+                    email: formData.email,
+                    role: 'user',
+                    userId: newUserId,
+                    fullName: formData.name
+                }));
+
+                setSuccessMessage(`✅ Account created! Welcome ${formData.name}! Redirecting...`);
+                setRole('user');
+
+                setTimeout(() => {
+                    const redirectUrl = searchParams.get('redirect');
+                    if (redirectUrl) {
+                        navigate(redirectUrl);
+                    } else {
+                        navigate('/user');
+                    }
+                }, 1000);
+            } else {
+                setErrors({ form: response.data.message || 'Failed to register.' });
+            }
+        } catch (error) {
+            console.error('Error registering user:', error);
+            const errorMsg = error.response?.data?.message || 'Failed to connect to server. Ensure backend is running on port 8082.';
+            setErrors({ form: errorMsg });
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     return (
@@ -143,6 +167,34 @@ export default function RegisterPage() {
                                 className={`w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500 ${errors.email ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
                             />
                             {errors.email && <p className="text-red-600 text-xs mt-1">{errors.email}</p>}
+                        </div>
+
+                        {/* Contact */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact Number</label>
+                            <input
+                                type="tel"
+                                name="contact"
+                                placeholder="Your 10-digit number"
+                                value={formData.contact}
+                                onChange={handleChange}
+                                className={`w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500 ${errors.contact ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                            />
+                            {errors.contact && <p className="text-red-600 text-xs mt-1">{errors.contact}</p>}
+                        </div>
+
+                        {/* Address */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Address</label>
+                            <input
+                                type="text"
+                                name="address"
+                                placeholder="Your Address"
+                                value={formData.address}
+                                onChange={handleChange}
+                                className={`w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500 ${errors.address ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                            />
+                            {errors.address && <p className="text-red-600 text-xs mt-1">{errors.address}</p>}
                         </div>
 
                         {/* Password */}

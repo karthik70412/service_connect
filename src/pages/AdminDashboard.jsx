@@ -3,11 +3,13 @@ import { useLocation } from 'react-router-dom';
 import DashboardLayout from '../layouts/DashboardLayout';
 import StatsCard from '../components/StatsCard';
 import { useApp } from '../context/AppContext';
+import categoryService from '../api/categoryService';
 
 export default function AdminDashboard() {
     const location = useLocation();
-    const { professionals, requests, serviceCategories, users, addCategory, removeCategory, syncUsers } = useApp();
+    const { professionals, requests, users, syncUsers } = useApp();
     const [activeTab, setActiveTab] = useState('overview');
+    const [categories, setCategories] = useState([]);
     const [newCatName, setNewCatName] = useState('');
     const [newCatIcon, setNewCatIcon] = useState('🔧');
     const [newCatDesc, setNewCatDesc] = useState('');
@@ -34,14 +36,33 @@ export default function AdminDashboard() {
         syncUsers();
     }, []);
 
+    // Fetch categories on component mount
+    useEffect(() => {
+        const fetchCategories = async () => {
+            try {
+                const fetchedCategories = await categoryService.getCategories();
+                setCategories(fetchedCategories);
+            } catch (error) {
+                console.error('Failed to fetch categories:', error);
+                setCategoryMessage('❌ Failed to load categories. Please refresh the page.');
+                setTimeout(() => setCategoryMessage(''), 5000);
+            }
+        };
+        fetchCategories();
+    }, []);
+
     const handleAddCategory = async (e) => {
         e.preventDefault();
         if (!newCatName.trim()) return;
         setIsAddingCategory(true);
         try {
-            // Simulate API call
-            await new Promise(res => setTimeout(res, 600));
-            addCategory({ name: newCatName, icon: newCatIcon, description: newCatDesc, color: 'bg-gray-100 text-gray-700' });
+            const categoryData = {
+                name: newCatName,
+                icon: newCatIcon,
+                description: newCatDesc
+            };
+            const newCategory = await categoryService.addCategory(categoryData);
+            setCategories(prev => [...prev, newCategory]);
             setNewCatName('');
             setNewCatIcon('🔧');
             setNewCatDesc('');
@@ -59,9 +80,8 @@ export default function AdminDashboard() {
     const handleRemoveCategory = async (id) => {
         setRemovingId(id);
         try {
-            // Simulate API call
-            await new Promise(res => setTimeout(res, 400));
-            removeCategory(id);
+            await categoryService.deleteCategory(id);
+            setCategories(prev => prev.filter(cat => cat.id !== id));
             setCategoryMessage('✅ Category removed successfully!');
             setTimeout(() => setCategoryMessage(''), 2500);
         } catch (error) {
@@ -96,7 +116,7 @@ export default function AdminDashboard() {
                     <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
                         <StatsCard title="Total Users" value={users.length} icon="👥" color="blue" sub="Active accounts" />
                         <StatsCard title="Professionals" value={professionals.length} icon="🛠️" color="green" sub="Registered pros" />
-                        <StatsCard title="Service Categories" value={serviceCategories.length} icon="🗂️" color="purple" sub="Active services" />
+                        <StatsCard title="Service Categories" value={categories.length} icon="🗂️" color="purple" sub="Active services" />
                         <StatsCard title="Total Requests" value={requests.length} icon="📋" color="orange" sub="Hire requests" />
                     </div>
 
@@ -123,7 +143,7 @@ export default function AdminDashboard() {
                         <div className="card">
                             <h3 className="font-semibold text-gray-900 mb-4">Service Categories</h3>
                             <div className="space-y-2">
-                                {serviceCategories.slice(0, 6).map(cat => (
+                                {categories.slice(0, 6).map(cat => (
                                     <div key={cat.id} className="flex items-center gap-3">
                                         <span className="text-xl">{cat.icon}</span>
                                         <div className="flex-1">
@@ -270,9 +290,9 @@ export default function AdminDashboard() {
 
                     {/* Categories List */}
                     <div className="card">
-                        <h3 className="font-semibold text-gray-900 mb-5">Service Categories ({serviceCategories.length})</h3>
+                        <h3 className="font-semibold text-gray-900 mb-5">Service Categories ({categories.length})</h3>
                         <div className="grid sm:grid-cols-2 gap-3">
-                            {serviceCategories.map(cat => (
+                            {categories.map(cat => (
                                 <div 
                                     key={cat.id} 
                                     className={`flex items-center gap-3 p-3 border border-gray-100 rounded-xl hover:bg-gray-50 transition-colors ${removingId === cat.id ? 'opacity-50' : ''}`}

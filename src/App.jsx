@@ -82,6 +82,11 @@ export default function App() {
           <ProfessionalDetail />
         </ProtectedRoute>
       } />
+      <Route path="/user/support" element={
+        <ProtectedRoute allowedRole="user">
+          <UserDashboard />
+        </ProtectedRoute>
+      } />
 
       {/* Support Routes */}
       <Route path="/support/*" element={

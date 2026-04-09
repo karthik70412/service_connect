@@ -10,13 +10,15 @@ connectDB();
 
 const app = express();
 app.use(express.json()); 
-app.use(cors({ origin: 'http://localhost:1006' })); // React App URL
+app.use(cors({ origin: 'http://localhost:5174' })); // React App URL (updated for Vite)
 
 // Import and use API routes
 const professionalsRoute = require('./routes/professionals');
+const requestsRoute = require('./routes/requests');
 app.use('/api/professionals', professionalsRoute); 
+app.use('/api/requests', requestsRoute);
 
 app.get('/', (req, res) => res.send('API Running'));
 
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 8082;
 app.listen(PORT, () => console.log(`Server started on port ${PORT}`));

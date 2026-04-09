@@ -2,6 +2,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import API from '../api/axiosConfig';
 
 const validateEmail = (email) => {
     return /\S+@\S+\.\S+/.test(email);
@@ -9,13 +10,14 @@ const validateEmail = (email) => {
 
 export default function ProfessionalRegister() {
     const navigate = useNavigate();
-    const { setRole, professionals, setProfessionals, syncUsers } = useApp();
+    const { setRole, professionals, setProfessionals, syncUsers, serviceCategories } = useApp();
     
     const [formData, setFormData] = useState({
         name: '',
         email: '',
         password: '',
         confirmPassword: '',
+        contact: '',
         profession: 'Plumbing',
         rate: '',
         bio: '',
@@ -64,8 +66,12 @@ export default function ProfessionalRegister() {
             currentErrors.bio = `Bio must be at least 20 characters. (Current: ${formData.bio.length})`;
         }
         
-        if (formData.location.length < 3) {
+        if (!formData.location || formData.location.length < 3) {
             currentErrors.location = "Location is required.";
+        }
+
+        if (!formData.contact || formData.contact.length < 10) {
+            currentErrors.contact = "Valid Contact Number is required.";
         }
         
         setErrors(currentErrors);
@@ -80,85 +86,99 @@ export default function ProfessionalRegister() {
         setIsLoading(true);
         
         try {
-            // Check if email already exists
-            const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
-            if (existingUsers.some(u => u.email === formData.email)) {
-                setErrors({ form: 'Email already registered. Please use a different email or login.' });
-                setIsLoading(false);
-                return;
+            // Prepare professional data for backend
+            const professionalData = {
+                professionalName: formData.name,
+                professionalEmail: formData.email,
+                professionalPassword: formData.password,
+                professionalContact: formData.contact,
+                professionalCategory: formData.profession,
+                professionalExperience: `${formData.rate} per hr - ${formData.bio}`,
+                professionalLocation: formData.location
+            };
+
+            // Call real backend API
+            const response = await API.post('/professionalapi/registration', professionalData);
+            
+            if (response.data.message.includes("Successful")) {
+                const backendProfessional = response.data; // Backend might return the saved entity or a success message
+                
+                // Still keep local registration for other components that might depend on it
+                // and for state synchronization
+                const maxId = Math.max(...professionals.map(p => p.id), 0);
+                const newProfessionalId = backendProfessional.professionalId || (maxId + 1);
+
+                const newProfessional = {
+                    id: newProfessionalId,
+                    name: formData.name,
+                    category: formData.profession,
+                    avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`,
+                    rating: 5.0,
+                    reviews: 0,
+                    location: formData.location,
+                    experience: 'New Professional',
+                    price: `₹${formData.rate}/hr`,
+                    bio: formData.bio,
+                    services: [formData.profession],
+                    available: true,
+                    verified: false,
+                    completedJobs: 0,
+                    email: formData.email
+                };
+
+                // Add to professionals state
+                setProfessionals([...professionals, newProfessional]);
+
+                // Store in localStorage for persistence and auth logic
+                const existingUsers = JSON.parse(localStorage.getItem('users') || '[]');
+                const newUser = {
+                    name: formData.name,
+                    email: formData.email,
+                    password: formData.password,
+                    role: 'professional',
+                    professionalId: newProfessionalId,
+                    userId: Math.floor(Math.random() * 10000) + 1000
+                };
+                existingUsers.push(newUser);
+                localStorage.setItem('users', JSON.stringify(existingUsers));
+
+                // Auto-login locally
+                localStorage.setItem('currentUser', JSON.stringify({
+                    name: formData.name,
+                    isLoggedIn: true,
+                    email: formData.email,
+                    role: 'professional',
+                    professionalId: newProfessionalId,
+                    userId: newUser.userId,
+                    fullName: formData.name
+                }));
+
+                setRole('professional');
+                setSuccessMessage(`✅ Welcome ${formData.name}! Your professional profile has been created. Redirecting...`);
+                syncUsers();
+
+                setTimeout(() => {
+                    navigate('/professional');
+                }, 1500);
+            } else {
+                setErrors({ form: response.data.message || 'Failed to register.' });
             }
-
-            // Create new professional in professionals list
-            const maxId = Math.max(...professionals.map(p => p.id), 0);
-            const newProfessional = {
-                id: maxId + 1,
-                name: formData.name,
-                category: formData.profession,
-                avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${formData.name}`,
-                rating: 5.0,
-                reviews: 0,
-                location: formData.location,
-                experience: 'New Professional',
-                price: `₹${formData.rate}/hr`,
-                bio: formData.bio,
-                services: [formData.profession],
-                available: true,
-                verified: false,
-                completedJobs: 0,
-                email: formData.email
-            };
-
-            // Add to professionals
-            setProfessionals([...professionals, newProfessional]);
-
-            // Store updated professionals in localStorage
-            localStorage.setItem('professionals', JSON.stringify([...professionals, newProfessional]));
-
-            // Create user account
-            const newUser = {
-                name: formData.name,
-                email: formData.email,
-                password: formData.password,
-                role: 'professional',
-                professionalId: newProfessional.id,
-                userId: Math.floor(Math.random() * 10000) + 1000
-            };
-
-            existingUsers.push(newUser);
-            localStorage.setItem('users', JSON.stringify(existingUsers));
-
-            // Auto-login
-            localStorage.setItem('currentUser', JSON.stringify({
-                name: formData.name,
-                isLoggedIn: true,
-                email: formData.email,
-                role: 'professional',
-                professionalId: newProfessional.id,
-                userId: newUser.userId,
-                fullName: formData.name
-            }));
-
-            setRole('professional');
-            setSuccessMessage(`✅ Welcome ${formData.name}! Your professional profile has been created. Redirecting...`);
-            syncUsers();
-
-            setTimeout(() => {
-                navigate('/professional');
-            }, 1500);
         } catch (error) {
             console.error('Error registering professional:', error);
-            setErrors({ form: 'Failed to register. Please try again.' });
+            const errorMsg = error.response?.data?.message || 'Failed to connect to server. Ensure backend is running on port 8082.';
+            setErrors({ form: errorMsg });
         } finally {
             setIsLoading(false);
         }
     };
 
-    const professions = [
-        'Plumbing', 'Electrical', 'Carpentry', 'Painting', 'Cleaning', 
-        'AC & Appliance', 'Pest Control', 'Water Purifier', 'Tutor', 
-        'Music Teacher', 'Fitness Trainer', 'Photographer', 'Graphic Designer', 
-        'Web Developer', 'Content Writer', 'Beautician', 'Accountant', 'Legal Consultant'
-    ];
+    // Use dynamic categories from AppContext, fallback to default list if empty
+    const professions = serviceCategories && serviceCategories.length > 0 
+        ? serviceCategories.map(cat => cat.name)
+        : ['Plumbing', 'Electrical', 'Carpentry', 'Painting', 'Cleaning', 
+           'AC & Appliance', 'Pest Control', 'Water Purifier', 'Tutor', 
+           'Music Teacher', 'Fitness Trainer', 'Photographer', 'Graphic Designer', 
+           'Web Developer', 'Content Writer', 'Beautician', 'Accountant', 'Legal Consultant'];
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 flex items-center justify-center p-4">
@@ -209,6 +229,20 @@ export default function ProfessionalRegister() {
                                 className={`w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500 ${errors.email ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
                             />
                             {errors.email && <p className="text-red-600 text-xs mt-1">{errors.email}</p>}
+                        </div>
+
+                        {/* Contact */}
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-1.5">Contact Number</label>
+                            <input
+                                type="tel"
+                                name="contact"
+                                placeholder="Your 10-digit number"
+                                value={formData.contact}
+                                onChange={handleChange}
+                                className={`w-full px-4 py-2.5 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500 ${errors.contact ? 'border-red-300 bg-red-50' : 'border-gray-200'}`}
+                            />
+                            {errors.contact && <p className="text-red-600 text-xs mt-1">{errors.contact}</p>}
                         </div>
 
                         {/* Password */}
